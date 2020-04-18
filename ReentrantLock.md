@@ -1,7 +1,5 @@
 # ReentrantLock源码解析
 
-[TOC]
-
 synchronized是jvm级别的可重入锁的实现,而ReenytrantLock则是java代码实现的可重入锁, ReentrantLock主要是使用CAS+AQS队列实现的
 
 CAS: compare and swap  比较并交换 Java中主要运用的底层的Unsafe 类来实现
