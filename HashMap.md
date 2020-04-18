@@ -1,8 +1,8 @@
-### HashMap源码解析
+## HashMap源码解析
 
 JDK8 对HashMap底层进行了优化 由原先的 Node数组 + 链表的结构 变成了Node数组 + 链表 + 红黑树 1.8也解决了死循环的情况
 
-###### Node类
+### Node类
 
 ```java
 // Node 类 实现了 Entry接口
@@ -47,7 +47,7 @@ static class Node<K,V> implements Map.Entry<K,V> {
 }
 ```
 
-###### 构造方法
+### 构造方法
 
 ```java
 // 无参
@@ -76,7 +76,7 @@ public HashMap(int initialCapacity, float loadFactor) {
 }
 ```
 
-###### tableSizeFor方法
+#### tableSizeFor方法
 
 ```java
 //保证hashMap的容量为 2^n  目的是为了计算index的时候尽量的保证更分散 保证计算结果和length尽量的无关
@@ -92,7 +92,15 @@ static final int tableSizeFor(int cap) {
 }
 ```
 
-###### hash方法
+### put方法
+
+```java
+public V put(K key, V value) {
+  return putVal(hash(key), key, value, false, true);
+}
+```
+
+#### hash
 
 ```java
 static final int hash(Object key) {
@@ -102,18 +110,10 @@ static final int hash(Object key) {
 }
 ```
 
-###### put方法
+#### putVal方法
 
 ```java
-public V put(K key, V value) {
-  return putVal(hash(key), key, value, false, true);
-}
-```
-
-###### putVal方法
-
-```java
-final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
+	final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
                boolean evict) {
   Node<K,V>[] tab; Node<K,V> p; int n, i;
   if ((tab = table) == null || (n = tab.length) == 0)
@@ -170,7 +170,7 @@ final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
   return null;
 ```
 
-###### putTreeVal 
+##### putTreeVal 
 
 ```java
 // 建议先去了解下 红黑树的特性 在看关于红黑树的这一段
@@ -254,7 +254,7 @@ static int tieBreakOrder(Object a, Object b) {
 }
 ```
 
-###### treeifyBin
+##### treeifyBin
 
 ```java
 final void treeifyBin(Node<K,V>[] tab, int hash) {
@@ -332,7 +332,7 @@ final void treeify(Node<K,V>[] tab) {
 }
 ```
 
-###### resize
+##### resize
 
 ```java
 final Node<K,V>[] resize() {
@@ -498,7 +498,7 @@ final Node<K,V> untreeify(HashMap<K,V> map) {
 }
 ```
 
-###### get
+### get
 
 ```java
 public V get(Object key) {
@@ -508,7 +508,7 @@ public V get(Object key) {
 }
 ```
 
-###### getNode
+#### getNode
 
 ```java
 final Node<K,V> getNode(int hash, Object key) {
@@ -536,7 +536,7 @@ final Node<K,V> getNode(int hash, Object key) {
 }
 ```
 
-###### getTreeNode
+##### getTreeNode
 
 ```java
 final TreeNode<K,V> getTreeNode(int h, Object k) {
@@ -544,7 +544,7 @@ final TreeNode<K,V> getTreeNode(int h, Object k) {
 }
 ```
 
-###### find
+##### find
 
 ```java
 final TreeNode<K,V> find(int h, Object k, Class<?> kc) {
