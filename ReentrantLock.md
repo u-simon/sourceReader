@@ -1,5 +1,7 @@
 # ReentrantLock源码解析
 
+[TOC]
+
 synchronized是jvm级别的可重入锁的实现,而ReenytrantLock则是java代码实现的可重入锁, ReentrantLock主要是使用CAS+AQS队列实现的
 
 CAS: compare and swap  比较并交换 Java中主要运用的底层的Unsafe 类来实现
@@ -275,6 +277,13 @@ final boolean acquireQueued(final Node node, int arg) {
 ```java
 // 线程入队能挂起的前提是 前置节点的状态为signal 含义是当前一个节点获取锁并且出队之后 唤醒当前线程
 private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
+  // 节点状态说明
+  /** waitStatus value to indicate thread has cancelled */
+  //static final int CANCELLED =  1;
+  /** waitStatus value to indicate successor's thread needs unparking */
+  //static final int SIGNAL    = -1;
+  /** waitStatus value to indicate thread is waiting on condition */
+  //static final int CONDITION = -2;
   int ws = pred.waitStatus;
   if (ws == Node.SIGNAL)
     // 先驱节点的状态为signal 则返回true
