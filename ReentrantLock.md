@@ -1,4 +1,4 @@
-## ReentrantLock源码解析
+# ReentrantLock源码解析
 
 synchronized是jvm级别的可重入锁的实现,而ReenytrantLock则是java代码实现的可重入锁, ReentrantLock主要是使用CAS+AQS队列实现的
 
@@ -8,7 +8,7 @@ AQS: AbstractQueuedSynchronizer
 
 reentrantLock支持非公平锁和公平锁
 
-### 非公平锁
+## 非公平锁
 
 ```java
 static final class NonfairSync extends Sync {
@@ -31,7 +31,7 @@ static final class NonfairSync extends Sync {
 }
 ```
 
-### 公平锁
+## 公平锁
 
 ```java
 static final class FairSync extends Sync {
@@ -66,7 +66,7 @@ static final class FairSync extends Sync {
 }
 ```
 
-### 构造方法
+## 构造方法
 
 ```java
 public ReentrantLock() {
@@ -78,7 +78,7 @@ public ReentrantLock(boolean fair) {
 }
 ```
 
-### lock方法 
+## lock
 
 先从非公平锁的实现开始说起
 
@@ -103,7 +103,7 @@ final void lock() {
 }
 ```
 
-#### acquire 
+### acquire 
 
 ```java
 public final void acquire(int arg) {
@@ -114,7 +114,7 @@ public final void acquire(int arg) {
 }
 ```
 
-##### tryAcquire
+#### tryAcquire
 
 非公平锁
 
@@ -124,7 +124,7 @@ protected final boolean tryAcquire(int acquires) {
 }
 ```
 
-###### nonfairTryAcquire
+##### nonfairTryAcquire
 
 ```java
 final boolean nonfairTryAcquire(int acquires) {
@@ -175,7 +175,7 @@ protected final boolean tryAcquire(int acquires) {
 }
 ```
 
-###### hasQueuedPredecessors
+##### hasQueuedPredecessors
 
 ```java
 public final boolean hasQueuedPredecessors() {
@@ -188,7 +188,7 @@ public final boolean hasQueuedPredecessors() {
 }
 ```
 
-##### addWaiter
+#### addWaiter
 
 ```java
 private Node addWaiter(Node mode) {
@@ -210,7 +210,7 @@ private Node addWaiter(Node mode) {
 }
 ```
 
-###### enq
+##### enq
 
 ```java
 // 初始化队列并添加新节点
@@ -233,7 +233,7 @@ private Node enq(final Node node) {
 }
 ```
 
-##### accquireQueued
+#### accquireQueued
 
 ```java
 // 入队的线程则自旋尝试获取锁
@@ -270,7 +270,7 @@ final boolean acquireQueued(final Node node, int arg) {
 }
 ```
 
-###### shouldParkAfterFailedAcquire
+##### shouldParkAfterFailedAcquire
 
 ```java
 // 线程入队能挂起的前提是 前置节点的状态为signal 含义是当前一个节点获取锁并且出队之后 唤醒当前线程
@@ -293,7 +293,7 @@ private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
 }
 ```
 
-###### parkAndCheckInterrupt
+##### parkAndCheckInterrupt
 
 ```java
 // 挂起当前线程,返回线程的中断状态并重置
@@ -303,4 +303,151 @@ private final boolean parkAndCheckInterrupt() {
 }
 ```
 
-#### 
+## tryLock
+
+### tryLock()
+
+```java
+public boolean tryLock() {
+  // nofairTryAcquire方法在前面介绍了
+  return sync.nonfairTryAcquire(1);
+}
+```
+
+- [tononfairTryAcquire](#nonfairTryAcquire)
+
+### tryLock(timeout, unit)
+
+```java
+public boolean tryLock(long timeout, TimeUnit unit)
+  throws InterruptedException {
+  return sync.tryAcquireNanos(1, unit.toNanos(timeout));
+}
+```
+
+#### tryAcquireNanos
+
+```java
+public final boolean tryAcquireNanos(int arg, long nanosTimeout)
+  throws InterruptedException {
+  if (Thread.interrupted())
+    throw new InterruptedException();
+  // 尝试获取锁 或者 有超时的获取
+  return tryAcquire(arg) ||
+    doAcquireNanos(arg, nanosTimeout);
+}
+```
+
+- [toTryAcquire](#tryAcquire)
+
+##### doAcquireNanos
+
+```java
+private boolean doAcquireNanos(int arg, long nanosTimeout)
+  throws InterruptedException {
+  if (nanosTimeout <= 0L)
+    return false;
+  // 计算过期时间
+  final long deadline = System.nanoTime() + nanosTimeout;
+  // 添加到队列中
+  final Node node = addWaiter(Node.EXCLUSIVE);
+  boolean failed = true;
+  try {
+    for (;;) {
+      final Node p = node.predecessor();
+      if (p == head && tryAcquire(arg)) {
+        setHead(node);
+        p.next = null; // help GC
+        failed = false;
+        return true;
+      }
+      nanosTimeout = deadline - System.nanoTime();
+      // 如果到规定时间都没获取锁则放弃
+      if (nanosTimeout <= 0L)
+        return false;
+      // 判断是不是可挂起
+      if (shouldParkAfterFailedAcquire(p, node) &&
+          nanosTimeout > spinForTimeoutThreshold)
+        // 带超时的挂起
+        LockSupport.parkNanos(this, nanosTimeout);
+      if (Thread.interrupted())
+        throw new InterruptedException();
+    }
+  } finally {
+    if (failed)
+      cancelAcquire(node);
+  }
+}
+```
+
+# unlock
+
+```java
+public void unlock() {
+  sync.release(1);
+}
+```
+
+### release
+
+```java
+public final boolean release(int arg) {
+  // 尝试释放锁
+  if (tryRelease(arg)) {
+    Node h = head;
+    // 判断head的waitStatus
+    if (h != null && h.waitStatus != 0)
+      //唤醒后面的节点
+      unparkSuccessor(h);
+    return true;
+  }
+  return false;
+}
+```
+
+#### tryRelease
+
+```java
+protected final boolean tryRelease(int releases) {
+  int c = getState() - releases;
+  // 释放锁的线程不是当前拥有锁的线程则抛出IllegalMonitorStateException异常
+  if (Thread.currentThread() != getExclusiveOwnerThread())
+    throw new IllegalMonitorStateException();
+  boolean free = false;
+  if (c == 0) {
+    // 释放锁成功
+    free = true;
+    // 抹除所得拥有线程
+    setExclusiveOwnerThread(null);
+  }
+  // 说明线程多次获取锁 需要多次 unlock
+  setState(c);
+  return free;
+}
+```
+
+#### unparkSuccessor
+
+```java
+private void unparkSuccessor(Node node) {
+  int ws = node.waitStatus;
+  if (ws < 0)
+    // head的节点小于0 先设置为0
+    compareAndSetWaitStatus(node, ws, 0);
+  
+  // 获取head的下一个节点
+  Node s = node.next;
+  if (s == null || s.waitStatus > 0) {
+    // 说明当前节点的状态为cancelled
+    s = null;
+    // 从根节点开始寻找第一个不为cancelled状态的节点
+    for (Node t = tail; t != null && t != node; t = t.prev)
+      if (t.waitStatus <= 0)
+        s = t;
+  }
+  if (s != null)
+    // 唤醒节点
+    LockSupport.unpark(s.thread);
+}
+```
+
