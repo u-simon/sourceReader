@@ -233,7 +233,7 @@ private Node enq(final Node node) {
 }
 ```
 
-#### accquireQueued
+#### acquireQueued
 
 ```java
 // 入队的线程则自旋尝试获取锁
@@ -387,7 +387,7 @@ private boolean doAcquireNanos(int arg, long nanosTimeout)
 }
 ```
 
-# unlock
+## unlock
 
 ```java
 public void unlock() {
@@ -455,6 +455,265 @@ private void unparkSuccessor(Node node) {
   if (s != null)
     // 唤醒节点
     LockSupport.unpark(s.thread);
+}
+```
+
+## newCondition
+
+```java
+final ConditionObject newCondition() {
+  // 创建一个ConditionObject对象
+  return new ConditionObject();
+}
+```
+
+### await
+
+```java
+// AQS中await的实现
+public final void await() throws InterruptedException {
+  // 线程中断则抛出InterceptedException
+  if (Thread.interrupted())
+    throw new InterruptedException();
+  // 将线程添加到等待队列
+  Node node = addConditionWaiter();
+  // 释放线程持有的锁
+  int savedState = fullyRelease(node);
+  int interruptMode = 0;
+  // 判断线程是否在同步队列
+  while (!isOnSyncQueue(node)) {
+    // 挂起线程
+    LockSupport.park(this);
+    // 检查中断状态
+    if ((interruptMode = checkInterruptWhileWaiting(node)) != 0)
+      break;
+  }
+  // 已经在同步队列则自旋获取锁
+  if (acquireQueued(node, savedState) && interruptMode != THROW_IE)
+     // 线程被中断但是线程没有退出等待 则重新中断
+    interruptMode = REINTERRUPT;
+  if (node.nextWaiter != null) // clean up if cancelled
+    // 线程下一个节点不为空则清理清理队列
+    unlinkCancelledWaiters();
+  if (interruptMode != 0)
+    reportInterruptAfterWait(interruptMode);
+}
+```
+
+#### addConditionWaiter
+
+```java
+private Node addConditionWaiter() {
+  Node t = lastWaiter;
+  // lastWaiter 取消了 则清理队列
+  if (t != null && t.waitStatus != Node.CONDITION) {
+    unlinkCancelledWaiters();
+    t = lastWaiter;
+  }
+  // node的waitStatus 为 condition
+  Node node = new Node(Thread.currentThread(), Node.CONDITION);
+  if (t == null)
+    // 队列尾空则添加到firstWaiter
+    firstWaiter = node;
+  else
+    // 队列不为空则添加到对列尾
+    t.nextWaiter = node;
+  // 对列尾重新赋值
+  lastWaiter = node;
+  return node;
+}
+```
+
+#### fullyRelease
+
+```java
+final int fullyRelease(Node node) {
+  boolean failed = true;
+  try {
+    int savedState = getState();
+    // 全部释放 包括重入次数
+    if (release(savedState)) {
+      // 释放成功
+      failed = false;
+      return savedState;
+    } else {
+      // 失败则抛出异常
+      throw new IllegalMonitorStateException();
+    }
+  } finally {
+    if (failed)
+      node.waitStatus = Node.CANCELLED;
+  }
+}
+```
+
+#### isOnSyncQueue
+
+```java
+final boolean isOnSyncQueue(Node node) {
+  if (node.waitStatus == Node.CONDITION || node.prev == null)
+    // 节点的状态为condition 或者前置节点为空 则不存在队列中
+    return false;
+  if (node.next != null) 
+    // 节点存在next节点 则说明在队列中
+    return true;
+ // 从尾部开始查找节点
+  return findNodeFromTail(node);
+}
+```
+
+##### findNodeFromTail
+
+```java
+/**从尾部开始寻找节点**/
+private boolean findNodeFromTail(Node node) {
+  Node t = tail;
+  for (;;) {
+    if (t == node)
+      return true;
+    if (t == null)
+      return false;
+    t = t.prev;
+  }
+}
+```
+
+#### checkInterruptWhileWaiting
+
+```java
+private int checkInterruptWhileWaiting(Node node) {
+  // 判断线程是否终端并抹除状态
+  return Thread.interrupted() ?
+    // 转换线程的状态
+    (transferAfterCancelledWait(node) ? THROW_IE : REINTERRUPT) :
+  0;
+}
+```
+
+##### transferAfterCancelledWait
+
+```java
+final boolean transferAfterCancelledWait(Node node) {
+  if (compareAndSetWaitStatus(node, Node.CONDITION, 0)) {
+    // 中断退出
+    enq(node);
+    return true;
+  }
+  while (!isOnSyncQueue(node))
+    Thread.yield();
+  return false;
+}
+```
+
+- [toAcquireQueued](#acquireQueued)
+
+#### unlinkCancelledWaiters
+
+```java
+private void unlinkCancelledWaiters() {
+  Node t = firstWaiter;
+  Node trail = null;
+  // 遍历队列 清理那些取消的节点
+  while (t != null) {
+    Node next = t.nextWaiter;
+    if (t.waitStatus != Node.CONDITION) {
+      t.nextWaiter = null;
+      if (trail == null)
+        firstWaiter = next;
+      else
+        trail.nextWaiter = next;
+      if (next == null)
+        lastWaiter = trail;
+    }
+    else
+      trail = t;
+    t = next;
+  }
+}
+```
+
+#### reportInterruptAfterWait
+
+```java
+private void reportInterruptAfterWait(int interruptMode)
+  throws InterruptedException {
+  if (interruptMode == THROW_IE)
+    // 线程被中断抛出中断异常
+    throw new InterruptedException();
+  else if (interruptMode == REINTERRUPT)
+    selfInterrupt();
+}
+```
+
+### signal
+
+```java
+public final void signal() {
+  //判断当前线程是否是线程的的拥有者
+  if (!isHeldExclusively())
+    throw new IllegalMonitorStateException();
+  Node first = firstWaiter;
+  if (first != null)
+    // 唤醒第一个等待者
+    doSignal(first);
+}
+```
+
+#### doSignal
+
+```java
+private void doSignal(Node first) {
+  do {
+    // 设置first的next节点为firstWaiter
+    if ( (firstWaiter = first.nextWaiter) == null)
+      lastWaiter = null;
+    first.nextWaiter = null;
+  } while (!transferForSignal(first) &&
+           (first = firstWaiter) != null);
+}
+```
+
+##### transferForSignal
+
+```java
+final boolean transferForSignal(Node node) {
+  if (!compareAndSetWaitStatus(node, Node.CONDITION, 0))
+    // 该节点可能被取消
+    return false;
+  // 从条件队列添加到AQS的同步队列
+  Node p = enq(node);
+  int ws = p.waitStatus;
+  if (ws > 0 || !compareAndSetWaitStatus(p, ws, Node.SIGNAL))
+    // 前节点被取消 唤醒线程
+    LockSupport.unpark(node.thread);
+  return true;
+}
+```
+
+### signalAll
+
+```java
+public final void signalAll() {
+  if (!isHeldExclusively())
+    throw new IllegalMonitorStateException();
+  Node first = firstWaiter;
+  if (first != null)
+    doSignalAll(first);
+}
+```
+
+#### doSignalAll
+
+```java
+private void doSignalAll(Node first) {
+  lastWaiter = firstWaiter = null;
+  // 循环遍历唤醒
+  do {
+    Node next = first.nextWaiter;
+    first.nextWaiter = null;
+    transferForSignal(first);
+    first = next;
+  } while (first != null);
 }
 ```
 
