@@ -1,0 +1,3 @@
+# ConcurrentHashMap解析
+
+JDK8对ConcurrentHashMap 做了调整 把1.7 的分段锁Segment去掉转而使用CAS+synchronized来实现同步
