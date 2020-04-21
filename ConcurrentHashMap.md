@@ -5,7 +5,7 @@ JDK8对ConcurrentHashMap 做了调整 把1.7 的分段锁Segment去掉转而使�
 ## 构造函数
 
 ```java
-// ConcurrentHashMap在构造函数的时候不会对Node数组进行初始化,而是在第一次调用put方法的时候进行初始化
+// ConcurrentHashMap在构造函数的时候不会对Node数组进行初始化,而是在第一次调用put方法的时候进行初始化 延迟初始化
 // 无参构造哦
 public ConcurrentHashMap() {
 }
@@ -178,29 +178,37 @@ private final Node<K,V>[] initTable() {
 ```java
 // 这是一个协助扩容的方法 这个方法被调用的时候 table已经在扩容
 final Node<K,V>[] helpTransfer(Node<K,V>[] tab, Node<K,V> f) {
-  Node<K,V>[] nextTab; int sc;
-  if (tab != null && (f instanceof ForwardingNode) &&
-      (nextTab = ((ForwardingNode<K,V>)f).nextTable) != null) {
-    // table 不为空 并且节点类型为ForwardingNode类型 并且节点的nextTab不为空
-     // Integer.numberOfLeadingZeros(n)(返回n转换成2进制之后最高位前面有多少个0) | (1 << (RESIZE_STAMP_BITS - 1))
-    int rs = resizeStamp(tab.length);
-    
-    while (nextTab == nextTable && table == tab && (sc = sizeCtl) < 0) {
-      // f.nextTable == nextTable 并且 table == tab 并且 sizeCtl < 0
-      // RESIZE_STAMP_SHIFT = 16
-      if ((sc >>> RESIZE_STAMP_SHIFT) != rs || sc == rs + 1 ||
-          sc == rs + MAX_RESIZERS || transferIndex <= 0)
-        break;
-      
-      if (U.compareAndSwapInt(this, SIZECTL, sc, sc + 1)) {
-        // 将tab的节点转移到nextTab中
-        transfer(tab, nextTab);
-        break;
-      }
+    Node<K,V>[] nextTab; int sc;
+    // 如果 table 不是空 且 node 节点是转移类型，数据检验
+    // 且 node 节点的 nextTable（新 table） 不是空，同样也是数据校验
+    // 尝试帮助扩容
+    if (tab != null && (f instanceof ForwardingNode) &&
+        (nextTab = ((ForwardingNode<K,V>)f).nextTable) != null) {
+        // 根据 length 得到一个标识符号
+        int rs = resizeStamp(tab.length);
+        // 如果 nextTab 没有被并发修改 且 tab 也没有被并发修改
+        // 且 sizeCtl  < 0 （说明还在扩容）
+        while (nextTab == nextTable && table == tab &&
+               (sc = sizeCtl) < 0) {
+            // 如果 sizeCtl 无符号右移  16 不等于 rs （ sc前 16 位如果不等于标识符，则标识符变化了）
+            // 或者 sizeCtl == rs + 1  （扩容结束了，不再有线程进行扩容）（默认第一个线程设置 sc ==rs 左移 16 位 + 2，当第一个线程结束扩容了，就会将 sc 减一。这个时候，sc 就等于 rs + 1）
+            // 或者 sizeCtl == rs + 65535  （如果达到最大帮助线程的数量，即 65535）
+            // 或者转移下标正在调整 （扩容结束）
+            // 结束循环，返回 table
+            if ((sc >>> RESIZE_STAMP_SHIFT) != rs || sc == rs + 1 ||
+                sc == rs + MAX_RESIZERS || transferIndex <= 0)
+                break;
+            // 如果以上都不是, 将 sizeCtl + 1, （表示增加了一个线程帮助其扩容）
+            if (U.compareAndSwapInt(this, SIZECTL, sc, sc + 1)) {
+                // 进行转移
+                transfer(tab, nextTab);
+                // 结束循环
+                break;
+            }
+        }
+        return nextTab;
     }
-    return nextTab;
-  }
-  return table;
+    return table;
 }
 ```
 
