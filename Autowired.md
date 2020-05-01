@@ -166,3 +166,19 @@ protected void inject(Object target, @Nullable String requestingBeanName, @Nulla
 }
 ```
 
+##### getResourceToInject()
+
+```
+// 具体的实现在ResourceElement中
+protected Object getResourceToInject(Object target, @Nullable String requestingBeanName) {
+   //  判断是不是懒加载的
+   return (this.lazyLookup ? 
+         // 构建懒加载资源的代理
+         buildLazyResourceProxy(this, requestingBeanName) :
+         // 获取资源
+         getResource(this, requestingBeanName));
+}
+```
+
+
+
