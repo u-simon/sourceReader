@@ -335,6 +335,14 @@ final void treeify(Node<K,V>[] tab) {
 #### balanceInsertion()
 
 ```java
+/**
+ * 红黑树的特性
+ * 1.节点是黑色或者是红色
+ * 2.根节点是黑色
+ * 3.每个叶子节点(NIL节点,空节点)是黑色
+ * 4.每个红色叶子节点的两个子节点都是黑色(从每个叶子到根的所有路径上不能有连续的两个红色节点)
+ * 5.从任一节点到其每一个叶子节点的路径上包含的黑色节点数量都相同
+ */
 static <K,V> TreeNode<K,V> balanceInsertion(TreeNode<K,V> root,
                                             TreeNode<K,V> x) {
   // 默认当前插入的节点为红节点
@@ -352,7 +360,7 @@ static <K,V> TreeNode<K,V> balanceInsertion(TreeNode<K,V> root,
       return root;
     if (xp == (xppl = xpp.left)) { // 父节点是爷爷节点的左孩子
       if ((xppr = xpp.right) != null && xppr.red) { // 爷爷节点的右孩子不为空 并且是红色
-        // 无旋转的情况
+        // 无旋转的情况 x节点为红色 父节点为红色破坏特性4  则需要进行重新染色
         xppr.red = false;// 右叔叔节点置黑
         xp.red = false; //父节点置黑
         xpp.red = true; // 爷爷节点置红
@@ -365,7 +373,7 @@ static <K,V> TreeNode<K,V> balanceInsertion(TreeNode<K,V> root,
           xpp = (xp = x.parent) == null ? null : xp.parent; // 获取爷爷节点
         }
         if (xp != null) { // 如果父节点不为空
-          xp.red = false; // 置黑
+          xp.red = false; // 置黑(其实就是把x节点置黑)
           if (xpp != null) { // 爷爷节点不为空
             xpp.red = true; // 置红
             root = rotateRight(root, xpp);// 爷爷节点右旋
