@@ -332,6 +332,124 @@ final void treeify(Node<K,V>[] tab) {
 }
 ```
 
+#### balanceInsertion()
+
+```java
+static <K,V> TreeNode<K,V> balanceInsertion(TreeNode<K,V> root,
+                                            TreeNode<K,V> x) {
+  // 默认当前插入的节点为红节点
+  x.red = true;
+  // xp:当前节点的父节点 xpp:当前节点的爷爷节点 xppl:当前节点的左叔叔节点 xppr:当前节点的右叔叔节点
+  for (TreeNode<K,V> xp, xpp, xppl, xppr;;) {
+    if ((xp = x.parent) == null) {// 当前节点的父节点为null 也就是x节点就是根节点
+     // x节点置黑
+      x.red = false;
+      // 返回根节点
+      return x;
+    }
+    // 父节点为黑节点 或者 爷爷节点为空
+    else if (!xp.red || (xpp = xp.parent) == null)
+      return root;
+    if (xp == (xppl = xpp.left)) { // 父节点是爷爷节点的左孩子
+      if ((xppr = xpp.right) != null && xppr.red) { // 爷爷节点的右孩子不为空 并且是红色
+        // 无旋转的情况
+        xppr.red = false;// 右叔叔节点置黑
+        xp.red = false; //父节点置黑
+        xpp.red = true; // 爷爷节点置红
+        x = xpp; // x节点设置为爷爷节点 进行下一轮循环
+      }
+      else {// 爷爷节点的右孩子为空或者是黑色
+        if (x == xp.right) {// 如果x是右孩子节点
+          // 父节点进行左旋
+          root = rotateLeft(root, x = xp);
+          xpp = (xp = x.parent) == null ? null : xp.parent; // 获取爷爷节点
+        }
+        if (xp != null) { // 如果父节点不为空
+          xp.red = false; // 置黑
+          if (xpp != null) { // 爷爷节点不为空
+            xpp.red = true; // 置红
+            root = rotateRight(root, xpp);// 爷爷节点右旋
+          }
+        }
+      }
+    }
+    else { // 父节点是爷爷节点的右孩子节点
+      if (xppl != null && xppl.red) { // 左叔叔节点不为空并且是红节点
+        xppl.red = false;// 左叔叔节点置黑
+        xp.red = false; // 父节点置黑
+        xpp.red = true; // 爷爷节点置红
+        x = xpp; // x节点设置为爷爷节点 ，进行下一轮循环
+      }
+      else {// 左叔叔节点为空或者为黑节点
+        if (x == xp.left) { // x为父节点的左孩子节点
+          // 父节点进行右旋
+          root = rotateRight(root, x = xp);
+          xpp = (xp = x.parent) == null ? null : xp.parent;// 获取爷爷节点
+        }
+        if (xp != null) { // 如果父节点不为空
+          xp.red = false; // 置黑
+          if (xpp != null) { // 爷爷节点不为空
+            xpp.red = true; // 置红
+            root = rotateLeft(root, xpp); // 爷爷节点进行左旋
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### rotateLeft()
+
+```java
+static <K,V> TreeNode<K,V> rotateLeft(TreeNode<K,V> root,
+                                      TreeNode<K,V> p) {
+  
+  TreeNode<K,V> r, pp, rl; // r:左旋节点的右孩子节点 rl:左旋节点的右孩子节点的左孩子节点 pp:左旋节点的父节点
+  if (p != null && (r = p.right) != null) { // 旋转的节点以及右孩子节点不为空
+    
+    if ((rl = p.right = r.left) != null) //  r的左节点赋值给左旋节点的右孩子节点
+      rl.parent = p; // rl和左旋节点的父子关系
+    
+    if ((pp = r.parent = p.parent) == null)// r的父节点设置为p的父节点 将r升一级 此时父节点如果为null则说明是顶层节点，应该作为root标记为黑色
+      (root = r).red = false;
+    else if (pp.left == p) // 如果p是做孩子节点 则把r设置为p的父节点的左孩子节点
+      pp.left = r;
+    else // 要左旋的节点是个右孩子
+      pp.right = r;
+    
+    r.left = p; // r提升为父节点 则把p设置为r的左节点
+    p.parent = r; // r设置为p的父节点
+    
+  }
+  return root;
+}
+```
+
+#### rotateRight()
+
+```java
+static <K,V> TreeNode<K,V> rotateRight(TreeNode<K,V> root,
+                                       TreeNode<K,V> p) {
+  TreeNode<K,V> l, pp, lr; // l:右旋节点的左孩子节点 pp:右旋节点的父节点 lr : 右旋节点的左孩子节点的右孩子节点
+  if (p != null && (l = p.left) != null) {// 右旋节点已经它的左孩子节点不为空
+    
+    if ((lr = p.left = l.right) != null)// l的右节点赋值给右旋节点p的左孩子节点
+      lr.parent = p; // 设置lr的父节点为p
+    
+    if ((pp = l.parent = p.parent) == null) // l的父节点为p的父节点 将l节点提升一级此时父节点如果为null则说明是顶层节点，应该作为root标记为黑色 
+      (root = l).red = false;
+    else if (pp.right == p)// 如果p为父节点的右孩子节点 设把l设置为pp的右孩子节点 否则设置为左孩子节点
+      pp.right = l;
+    else    
+      pp.left = l;  
+    l.right = p; // l的右孩子节点为p 这里就是l和p换了个位置
+    p.parent = l; // p的父节点为l
+  }
+  return root;
+}
+```
+
 #### resize
 
 ```java
