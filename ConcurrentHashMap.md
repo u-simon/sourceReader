@@ -332,6 +332,10 @@ private final void addCount(long x, int check) {
 ##### transfer
 
 ```java
+1.一个线程先获取一个任务区间进行数据转移(区间大小为16)
+2.线程按照索引从大到小处理每个桶处理完成把当前桶置为完成(ForwardNode(hash=-1))
+3.处理完当前区间在从新获取新的区间 如果其他线程处理完 则当前线程执行完成不在处理 如果是最后一个执行完的线程则在重新检查一下整张表是否都应扩容完成
+4.如果是完成则把新表复制给Table引用并重新计算扩容阈值
 private final void transfer(Node<K,V>[] tab, Node<K,V>[] nextTab) {
     int n = tab.length, stride;
     // 将 length / 8 然后除以 CPU核心数。如果得到的结果小于 16，那么就使用 16。
@@ -357,9 +361,9 @@ private final void transfer(Node<K,V>[] tab, Node<K,V>[] nextTab) {
     }
     // 新 tab 的 length
     int nextn = nextTab.length;
-    // 创建一个 fwd 节点，用于占位。当别的线程发现这个槽位中是 fwd 类型的节点，则跳过这个节点。
+    // 创建一个 fwd 节点，用于占位。当别的线程发现这个槽位中是 fwd 类型的节点，则跳过这个节点。说明当点位置的已经被处理过
     ForwardingNode<K,V> fwd = new ForwardingNode<K,V>(nextTab);
-    // 首次推进为 true，如果等于 true，说明需要再次推进一个下标（i--），反之，如果是 false，那么就不能推进下标，需要将当前的下标处理完毕才能继续推进
+    // 首次推进为 true，如果等于 true，说明需要再次推进一个下标（i--），反之，如果是 false，那么就不能推进下标，需要将当前的下标处理完毕才能继续推进, 其实是从后向前处理 16容量时 index 15 -1
     boolean advance = true;
     // 完成状态，如果是 true，就结束此方法。
     boolean finishing = false; // to ensure sweep before committing nextTab
@@ -450,11 +454,11 @@ private final void transfer(Node<K,V>[] tab, Node<K,V>[] nextTab) {
                                 hn = new Node<K,V>(ph, pk, pv, hn);
                         }
                         // 其实这里类似 hashMap 
-                        // 设置低位链表放在新链表的 i
+                        // 设置低位链表放在新链表的 i 也就是计算的位置和原tab的位置一样
                         setTabAt(nextTab, i, ln);
-                        // 设置高位链表，在原有长度上加 n
+                        // 设置高位链表，在原有长度上加 n 新的index = 原index+原tab length
                         setTabAt(nextTab, i + n, hn);
-                        // 将旧的链表设置成占位符
+                        // 将旧的链表设置成占位符表示已经处理过
                         setTabAt(tab, i, fwd);
                         // 继续向后推进
                         advance = true;
