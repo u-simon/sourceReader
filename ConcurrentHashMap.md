@@ -186,8 +186,7 @@ final Node<K,V>[] helpTransfer(Node<K,V>[] tab, Node<K,V> f) {
         (nextTab = ((ForwardingNode<K,V>)f).nextTable) != null) {
         // 根据 length 得到一个标识符号
         int rs = resizeStamp(tab.length);
-        // 如果 nextTab 没有被并发修改 且 tab 也没有被并发修改
-        // 且 sizeCtl  < 0 （说明还在扩容）
+        // 如果 nextTab 没有被并发修改 且 tab 也没有被并发修改 且 sizeCtl  < 0 （说明还在扩容）
         while (nextTab == nextTable && table == tab &&
                (sc = sizeCtl) < 0) {
             // 如果 sizeCtl 无符号右移  16 不等于 rs （ sc前 16 位如果不等于标识符，则标识符变化了）
@@ -255,6 +254,20 @@ private final void treeifyBin(Node<K,V>[] tab, int index) {
 #### addCount
 
 ```java
+x 参数表示的此次需要对表中元素的个数加几。check 参数表示是否需要进行扩容检查，大于等于0 需要进行检查，而我们的 putVal 方法的 binCount 参数最小也是 0 ，因此，每次添加元素都会进行检查。（除非是覆盖操作）
+
+1.判断计数盒子属性是否是空，如果是空，就尝试修改 baseCount 变量，对该变量进行加 X。
+2.如果计数盒子不是空，或者修改 baseCount 变量失败了，则放弃对 baseCount 进行操作。
+3.如果计数盒子是 null 或者计数盒子的 length 是 0，或者随机取一个位置的数组长度是 null，那么就对刚刚的元素进行 CAS 赋值。
+4.如果赋值失败，或者满足上面的条件，则调用 fullAddCount 方法重新死循环插入。
+5.这里如果操作 baseCount 失败了（或者计数盒子不是 Null），且对计数盒子赋值成功，那么就检查 check 变量，如果该变量小于等于 1. 直接结束。否则，计算一下 count 变量。
+6.如果 check 大于等于 0 ，说明需要对是否扩容进行检查。
+7.如果 map 的 size 大于 sizeCtl（扩容阈值），且 table 的长度小于 1 << 30，那么就进行扩容。
+8.根据 length 得到一个标识符，然后，判断 sizeCtl 状态，如果小于 0 ，说明要么在初始化，要么在扩容。
+9.如果正在扩容，那么就校验一下数据是否变化了（具体可以看上面代码的注释）。如果检验数据不通过，break。
+10.如果校验数据通过了，那么将 sizeCtl 加一，表示多了一个线程帮助扩容。然后进行扩容。
+11.如果没有在扩容，但是需要扩容。那么就将 sizeCtl 更新，赋值为标识符左移 16 位 —— 一个负数。然后加 2。 表示，已经有一个线程开始扩容了。然后进行扩容。然后再次更新 count，看看是否还需要扩容
+
 // 从 putVal 传入的参数是 1， binCount，binCount 默认是0，只有 hash 冲突了才会大于 1.且他的大小是链表的长度（如果不是红黑数结构的话）。
 private final void addCount(long x, int check) {
     CounterCell[] as; long b, s;
@@ -265,7 +278,7 @@ private final void addCount(long x, int check) {
         CounterCell a; long v; int m;
         boolean uncontended = true;
         // 如果计数盒子是空（尚未出现并发）
-        // 如果随机取余一个数组位置为空 或者
+        // 如果随机取出一个数组位置为空 或者
         // 修改这个槽位的变量失败（出现并发了）
         // 执行 fullAddCount 方法。并结束
         if (as == null || (m = as.length - 1) < 0 ||
@@ -314,20 +327,6 @@ private final void addCount(long x, int check) {
         }
     }
 }
-
-x 参数表示的此次需要对表中元素的个数加几。check 参数表示是否需要进行扩容检查，大于等于0 需要进行检查，而我们的 putVal 方法的 binCount 参数最小也是 0 ，因此，每次添加元素都会进行检查。（除非是覆盖操作）
-
-1.判断计数盒子属性是否是空，如果是空，就尝试修改 baseCount 变量，对该变量进行加 X。
-2.如果计数盒子不是空，或者修改 baseCount 变量失败了，则放弃对 baseCount 进行操作。
-3.如果计数盒子是 null 或者计数盒子的 length 是 0，或者随机取一个位置取于数组长度是 null，那么就对刚刚的元素进行 CAS 赋值。
-4.如果赋值失败，或者满足上面的条件，则调用 fullAddCount 方法重新死循环插入。
-5.这里如果操作 baseCount 失败了（或者计数盒子不是 Null），且对计数盒子赋值成功，那么就检查 check 变量，如果该变量小于等于 1. 直接结束。否则，计算一下 count 变量。
-6.如果 check 大于等于 0 ，说明需要对是否扩容进行检查。
-7.如果 map 的 size 大于 sizeCtl（扩容阈值），且 table 的长度小于 1 << 30，那么就进行扩容。
-8.根据 length 得到一个标识符，然后，判断 sizeCtl 状态，如果小于 0 ，说明要么在初始化，要么在扩容。
-9.如果正在扩容，那么就校验一下数据是否变化了（具体可以看上面代码的注释）。如果检验数据不通过，break。
-10.如果校验数据通过了，那么将 sizeCtl 加一，表示多了一个线程帮助扩容。然后进行扩容。
-11.如果没有在扩容，但是需要扩容。那么就将 sizeCtl 更新，赋值为标识符左移 16 位 —— 一个负数。然后加 2。 表示，已经有一个线程开始扩容了。然后进行扩容。然后再次更新 count，看看是否还需要扩容
 ```
 
 ##### transfer
@@ -401,7 +400,7 @@ private final void transfer(Node<K,V>[] tab, Node<K,V>[] nextTab) {
                 sizeCtl = (n << 1) - (n >>> 1); // 更新阈值
                 return;// 结束方法。
             }// 如果没完成
-            if (U.compareAndSwapInt(this, SIZECTL, sc = sizeCtl, sc - 1)) {// 尝试将 sc -1. 表示这个线程结束帮助扩容了，将 sc 的低 16 位减一。
+            if (U.compareAndSwapInt(this, SIZECTL, sc = sizeCtl, sc - 1)) {// 尝试将 sc -1. 表示这个线程结束帮助扩容了，将 sc 的低 16 位减一。helpTransfer中如果有线程帮助扩容则sc+1了
                 if ((sc - 2) != resizeStamp(n) << RESIZE_STAMP_SHIFT)// 如果 sc - 2 不等于标识符左移 16 位。如果他们相等了，说明没有线程在帮助他们扩容了。也就是说，扩容结束了。
                     return;// 不相等，说明没结束，当前线程结束方法。
                 finishing = advance = true;// 如果相等，扩容结束了，更新 finising 变量
