@@ -277,11 +277,11 @@ final boolean acquireQueued(final Node node, int arg) {
 private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
   // 节点状态说明
   /** waitStatus value to indicate thread has cancelled */
-  //static final int CANCELLED =  1;
+  //static final int CANCELLED =  1; 线程已经被取消 这种状态的节点会被忽略并移除队列
   /** waitStatus value to indicate successor's thread needs unparking */
-  //static final int SIGNAL    = -1;
+  //static final int SIGNAL    = -1; 表示当前线程已被挂起 并且后继节点可以尝试抢占锁
   /** waitStatus value to indicate thread is waiting on condition */
-  //static final int CONDITION = -2;
+  //static final int CONDITION = -2; 线程正在等待某些条件
   int ws = pred.waitStatus;
   if (ws == Node.SIGNAL)
     // 先驱节点的状态为signal 则返回true

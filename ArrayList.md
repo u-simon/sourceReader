@@ -67,6 +67,7 @@ private static int calculateCapacity(Object[] elementData, int minCapacity) {
 private void ensureExplicitCapacity(int minCapacity) {
   modCount++;
 	// 判断是否需要扩容
+  // 容器中添加1个元素之后如果长度大于数组的长度则进行扩容
   if (minCapacity - elementData.length > 0)
     grow(minCapacity);
 }

@@ -337,7 +337,7 @@ private final void addCount(long x, int check) {
 // 主要用来初始化CountCells(计数盒子),来记录集合中元素的个数
 private final void fullAddCount(long x, boolean wasUncontended) {
   int h;
-  // 获取当前下城的probe值，如果值为0 则初始化当前线程的probe的值, probe就是随机数
+  // 获取当前线程的probe值，如果值为0 则初始化当前线程的probe的值, probe就是随机数
   if ((h = ThreadLocalRandom.getProbe()) == 0) {
     // 强制初始化
     ThreadLocalRandom.localInit();      // force initialization
@@ -355,6 +355,7 @@ private final void fullAddCount(long x, boolean wasUncontended) {
     if ((as = counterCells) != null && (n = as.length) > 0) {
       // 通过该值与当前线程的probe获取一个cells一个下标元素 和hash表获取差不多
       if ((a = as[(n - 1) & h]) == null) {
+        
         // cellsBusy=0表示counterCells不在初始化或扩容状态
         if (cellsBusy == 0) {            // Try to attach new Cell
           // 构造一个CounterCell 传入元素个数
@@ -366,9 +367,9 @@ private final void fullAddCount(long x, boolean wasUncontended) {
             try {               // Recheck under lock
               CounterCell[] rs; int m, j;
               // 将初始化的r对象的元素个数放在对应的下标下面
-              if ((rs = counterCells) != null &&
-                  (m = rs.length) > 0 &&
-                  rs[j = (m - 1) & h] == null) {
+              if ((rs = counterCells) != null &&// CounterCells已经被初始化
+                  (m = rs.length) > 0 && // 并且长度大于0
+                  rs[j = (m - 1) & h] == null) {// 当前位置没有元素
                 rs[j] = r;
                 created = true;
               }
@@ -388,10 +389,12 @@ private final void fullAddCount(long x, boolean wasUncontended) {
       else if (!wasUncontended)       // CAS already known to fail
         // 设置为未冲突标识 进入下一次自旋
         wasUncontended = true;      // Continue after rehash
-      // 由于指定了下标位置cell值不为空 则直接通过cas进行原子累加 如果成功 直接退出
+      
+      // 由于下标位置cell值不为空 则直接通过cas进行原子累加 如果成功 直接退出
       else if (U.compareAndSwapLong(a, CELLVALUE, v = a.value, v + x))
         break;
-      // 如果已经有其他线程简历了新的CounterCells 或者CounterCells大于CPU核心数(很巧妙，现成的并发数不会超过cpu核心数)
+      
+      // 如果已经有其他线程建立了新的CounterCells 或者CounterCells大于CPU核心数(很巧妙，现成的并发数不会超过cpu核心数)
       else if (counterCells != as || n >= NCPU)
         // 设置当前线程的循环失败 不进行扩容
         collide = false;            // At max size or stale
@@ -420,9 +423,12 @@ private final void fullAddCount(long x, boolean wasUncontended) {
       // 继续下一次自旋
       h = ThreadLocalRandom.advanceProbe(h);
     }
-    // cellsBusy=0标识没有在做初始化 通过cas更新CellsBusy的值标注当前线程正在做初始化操作
+    
+    
+    // cellsBusy=0表示没有在做初始化 通过cas更新CellsBusy的值标注当前线程正在做初始化操作
     else if (cellsBusy == 0 && counterCells == as &&
              U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
+      //counterCells 没有被初始化 这里进行初始化
       boolean init = false;
       try {                           // Initialize table
         if (counterCells == as) {
@@ -448,8 +454,6 @@ private final void fullAddCount(long x, boolean wasUncontended) {
   }
 }
 ```
-
-
 
 ##### transfer
 
