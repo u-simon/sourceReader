@@ -256,11 +256,13 @@ private final void treeifyBin(Node<K,V>[] tab, int index) {
 ```java
 x 参数表示的此次需要对表中元素的个数加几。check 参数表示是否需要进行扩容检查，大于等于0 需要进行检查，而我们的 putVal 方法的 binCount 参数最小也是 0 ，因此，每次添加元素都会进行检查。（除非是覆盖操作）
 
+ 计数
 1.判断计数盒子属性是否是空，如果是空，就尝试修改 baseCount 变量，对该变量进行加 X。
 2.如果计数盒子不是空，或者修改 baseCount 变量失败了，则放弃对 baseCount 进行操作。
 3.如果计数盒子是 null 或者计数盒子的 length 是 0，或者随机取一个位置的数组长度是 null，那么就对刚刚的元素进行 CAS 赋值。
 4.如果赋值失败，或者满足上面的条件，则调用 fullAddCount 方法重新死循环插入。
 5.这里如果操作 baseCount 失败了（或者计数盒子不是 Null），且对计数盒子赋值成功，那么就检查 check 变量，如果该变量小于等于 1. 直接结束。否则，计算一下 count 变量。
+扩容检查  
 6.如果 check 大于等于 0 ，说明需要对是否扩容进行检查。
 7.如果 map 的 size 大于 sizeCtl（扩容阈值），且 table 的长度小于 1 << 30，那么就进行扩容。
 8.根据 length 得到一个标识符，然后，判断 sizeCtl 状态，如果小于 0 ，说明要么在初始化，要么在扩容。
@@ -328,6 +330,126 @@ private final void addCount(long x, int check) {
     }
 }
 ```
+
+##### fullAddCount(long x, boolean wasUncontended)
+
+```java
+// 主要用来初始化CountCells(计数盒子),来记录集合中元素的个数
+private final void fullAddCount(long x, boolean wasUncontended) {
+  int h;
+  // 获取当前下城的probe值，如果值为0 则初始化当前线程的probe的值, probe就是随机数
+  if ((h = ThreadLocalRandom.getProbe()) == 0) {
+    // 强制初始化
+    ThreadLocalRandom.localInit();      // force initialization
+    h = ThreadLocalRandom.getProbe();
+    // 由于重新生成了probe 未冲突标志位设置为true
+    wasUncontended = true;
+  }
+  boolean collide = false;                // True if last slot nonempty 如果最后一个插槽非空则为true
+  // 自旋
+  for (;;) {
+    
+    CounterCell[] as; CounterCell a; int n; long v;
+    
+    // countCells已经被初始化过
+    if ((as = counterCells) != null && (n = as.length) > 0) {
+      // 通过该值与当前线程的probe获取一个cells一个下标元素 和hash表获取差不多
+      if ((a = as[(n - 1) & h]) == null) {
+        // cellsBusy=0表示counterCells不在初始化或扩容状态
+        if (cellsBusy == 0) {            // Try to attach new Cell
+          // 构造一个CounterCell 传入元素个数
+          CounterCell r = new CounterCell(x); // Optimistic create
+          // 通过cas设置cellsBusy表示 防止其他线程来对counterCells并发处理
+          if (cellsBusy == 0 &&
+              U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
+            boolean created = false;
+            try {               // Recheck under lock
+              CounterCell[] rs; int m, j;
+              // 将初始化的r对象的元素个数放在对应的下标下面
+              if ((rs = counterCells) != null &&
+                  (m = rs.length) > 0 &&
+                  rs[j = (m - 1) & h] == null) {
+                rs[j] = r;
+                created = true;
+              }
+            } finally {
+              // 恢复标志位
+              cellsBusy = 0;
+            }
+            if (created)
+              break;
+            // 说明指定cells下标位置的数据不为空，进行下一次循环
+            continue;           // Slot is now non-empty
+          }
+        }
+        collide = false;
+      }
+      // 在addCount方法中cas失败了 并且获取Probe的值不为空
+      else if (!wasUncontended)       // CAS already known to fail
+        // 设置为未冲突标识 进入下一次自旋
+        wasUncontended = true;      // Continue after rehash
+      // 由于指定了下标位置cell值不为空 则直接通过cas进行原子累加 如果成功 直接退出
+      else if (U.compareAndSwapLong(a, CELLVALUE, v = a.value, v + x))
+        break;
+      // 如果已经有其他线程简历了新的CounterCells 或者CounterCells大于CPU核心数(很巧妙，现成的并发数不会超过cpu核心数)
+      else if (counterCells != as || n >= NCPU)
+        // 设置当前线程的循环失败 不进行扩容
+        collide = false;            // At max size or stale
+      else if (!collide) // 恢复collidae状态,标识下次循环会进行扩容
+        collide = true;
+      
+      // CounterCells数组容量不够 线程竞争较大，所以先设置一个标识标识正在扩容
+      else if (cellsBusy == 0 &&
+               U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
+        try {
+          if (counterCells == as) {// Expand table unless stale
+            // 扩容两倍 2变成4 这个扩容比较简单
+            CounterCell[] rs = new CounterCell[n << 1];
+            for (int i = 0; i < n; ++i)
+              rs[i] = as[i];
+            counterCells = rs;
+          }
+        } finally {
+          // 恢复标识
+          cellsBusy = 0;
+        }
+        collide = false;
+        // 继续下一次自旋
+        continue;                   // Retry with expanded table
+      }
+      // 继续下一次自旋
+      h = ThreadLocalRandom.advanceProbe(h);
+    }
+    // cellsBusy=0标识没有在做初始化 通过cas更新CellsBusy的值标注当前线程正在做初始化操作
+    else if (cellsBusy == 0 && counterCells == as &&
+             U.compareAndSwapInt(this, CELLSBUSY, 0, 1)) {
+      boolean init = false;
+      try {                           // Initialize table
+        if (counterCells == as) {
+          // 初始化容量为2
+          CounterCell[] rs = new CounterCell[2];
+          // 将x 也就是元素的个数放在指定的数组下标位置
+          rs[h & 1] = new CounterCell(x);
+           // 赋值给CounterCells
+          counterCells = rs;
+          // 设置初始化完成标识
+          init = true;
+        }
+      } finally {
+        // 恢复标识
+        cellsBusy = 0;
+      }
+      if (init)
+        break;
+    }
+    else if (U.compareAndSwapLong(this, BASECOUNT, v = baseCount, v + x))
+      // 竞争激烈 其他线程占据cell数组 直接累加在base变量中
+      break;                          // Fall back on using base
+  }
+}
+```
+
+
 
 ##### transfer
 
