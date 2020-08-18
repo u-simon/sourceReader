@@ -80,11 +80,14 @@ private void grow(int minCapacity) {
   int oldCapacity = elementData.length;
   // 1.5倍扩容
   int newCapacity = oldCapacity + (oldCapacity >> 1);
+  
+  // 下面这里主要应对容量溢出
   if (newCapacity - minCapacity < 0)
     newCapacity = minCapacity;
   // MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8
   if (newCapacity - MAX_ARRAY_SIZE > 0)
     newCapacity = hugeCapacity(minCapacity);
+  
   // 数组的copy 调用的 System.arraycopy
   elementData = Arrays.copyOf(elementData, newCapacity);
 }
