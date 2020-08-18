@@ -97,9 +97,7 @@ private static int hugeCapacity(int minCapacity) {
   if (minCapacity < 0) // overflow
     throw new OutOfMemoryError();
   // 最大容量为 Integer.max_value
-  return (minCapacity > MAX_ARRAY_SIZE) ?
-    Integer.MAX_VALUE :
-  MAX_ARRAY_SIZE;
+  return (minCapacity > MAX_ARRAY_SIZE) ? Integer.MAX_VALUE : MAX_ARRAY_SIZE;
 }
 ```
 
