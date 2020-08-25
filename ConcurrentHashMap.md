@@ -394,7 +394,7 @@ private final void fullAddCount(long x, boolean wasUncontended) {
       else if (U.compareAndSwapLong(a, CELLVALUE, v = a.value, v + x))
         break;
       
-      // 如果已经有其他线程建立了新的CounterCells 或者CounterCells大于CPU核心数(很巧妙，现成的并发数不会超过cpu核心数)
+      // 如果已经有其他线程建立了新的CounterCells 或者CounterCells大于CPU核心数(很巧妙，线程的并发数不会超过cpu核心数)
       else if (counterCells != as || n >= NCPU)
         // 设置当前线程的循环失败 不进行扩容
         collide = false;            // At max size or stale
